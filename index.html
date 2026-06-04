@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>社区独居老人照护风险预警与服务调度系统</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Toast 消息容器 -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- 顶部导航 -->
+  <header class="header">
+    <div class="header-inner">
+      <h1>社区独居老人照护风险预警与服务调度系统</h1>
+      <nav class="header-nav">
+        <a href="#" data-section="homeSection" class="active">首页概览</a>
+        <a href="#" data-section="elderFormSection">老人/家属端</a>
+        <a href="#" data-section="aiResultSection">智能风险识别</a>
+        <a href="#" data-section="reviewSection">网格员复核</a>
+        <a href="#" data-section="workOrderSection">工单调度</a>
+        <a href="#" data-section="collaborationSection">协同处理</a>
+        <a href="#" data-section="dashboardSection">管理驾驶舱</a>
+        <a href="#" data-section="dataSection">数据记录</a>
+        <a href="#" data-section="aiDocSection">AI 功能说明</a>
+        <a href="#" data-section="systemDocSection">系统文档</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- 主内容区 -->
+  <main class="main">
+
+    <!-- 模块 1：首页概览 -->
+    <section class="section active" id="homeSection">
+      <!-- 由 renderHome() 动态渲染 -->
+    </section>
+
+    <!-- 模块 2：老人/家属端 -->
+    <section class="section" id="elderFormSection">
+      <!-- 由 renderElderForm() 动态渲染 -->
+    </section>
+
+    <!-- 模块 3：智能风险识别 -->
+    <section class="section" id="aiResultSection">
+      <!-- 由 renderAIResult() 动态渲染 -->
+    </section>
+
+    <!-- 模块 4：网格员复核 -->
+    <section class="section" id="reviewSection">
+      <!-- 由 renderReviewPage() 动态渲染 -->
+    </section>
+
+    <!-- 模块 5：工单调度 -->
+    <section class="section" id="workOrderSection">
+      <!-- 由 renderWorkOrderPage() 动态渲染 -->
+    </section>
+
+    <!-- 模块 6：协同处理 -->
+    <section class="section" id="collaborationSection">
+      <!-- 由 renderCollaborationPage() 动态渲染 -->
+    </section>
+
+    <!-- 模块 7：管理驾驶舱 -->
+    <section class="section" id="dashboardSection">
+      <!-- 由 renderDashboard() 动态渲染 -->
+    </section>
+
+    <!-- 模块 8：数据记录 -->
+    <section class="section" id="dataSection">
+      <!-- 由 renderDataTables() 动态渲染 -->
+    </section>
+
+    <!-- 模块 9：AI 功能说明 -->
+    <section class="section" id="aiDocSection">
+      <!-- 由 renderAIDocPage() 动态渲染 -->
+    </section>
+
+    <!-- 模块 10：系统文档 -->
+    <section class="section" id="systemDocSection">
+      <!-- 由 renderSystemDocPage() 动态渲染 -->
+    </section>
+
+  </main>
+
+  <!-- 页脚 -->
+  <footer class="footer">
+    社区独居老人照护风险预警与服务调度系统 V1.2 | 管理信息系统课程项目原型 | 纯前端演示系统
+  </footer>
+
+  <!-- JavaScript 模块（按依赖顺序加载） -->
+  <script src="js/storage.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/aiEngine.js"></script>
+  <script src="js/workorderService.js"></script>
+  <script src="js/dashboardService.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+</html>
