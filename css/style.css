@@ -106,6 +106,38 @@ body {
   font-weight: 600;
 }
 
+/* --- 角色切换器 --- */
+.role-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 0 10px;
+  border-top: 1px solid var(--gray-100);
+}
+
+.role-switcher label {
+  font-size: 13px;
+  color: var(--gray-500);
+  font-weight: 600;
+}
+
+.role-switcher select {
+  padding: 4px 10px;
+  border: 2px solid var(--gray-300);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--gray-700);
+  background: var(--white);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.role-switcher select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
 /* --- 主内容区 --- */
 .main {
   max-width: 1400px;
@@ -359,16 +391,22 @@ table tbody tr.clickable {
 .tag-low {
   background: var(--green-light);
   color: var(--green-dark);
+  border-left: 3px solid var(--green);
+  padding-left: 8px;
 }
 
 .tag-mid {
   background: var(--orange-light);
   color: var(--orange-dark);
+  border-left: 3px dashed var(--orange);
+  padding-left: 8px;
 }
 
 .tag-high {
   background: var(--red-light);
   color: var(--red-dark);
+  border-left: 3px double var(--red);
+  padding-left: 8px;
 }
 
 .tag-info {
@@ -704,7 +742,7 @@ table tbody tr.clickable {
   gap: 20px;
 }
 
-/* --- 示例按钮组 --- */
+/* --- 场景按钮组 --- */
 .example-btns {
   display: flex;
   flex-wrap: wrap;
@@ -851,6 +889,75 @@ table tbody tr.clickable {
   margin: 12px 0;
 }
 
+/* --- 规则配置关键词标签 --- */
+.keyword-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.keyword-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.keyword-default {
+  background: var(--gray-100);
+  color: var(--gray-600);
+  border: 1px solid var(--gray-200);
+}
+
+.keyword-custom {
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  border: 1px solid var(--primary);
+}
+
+.keyword-del {
+  background: none;
+  border: none;
+  color: var(--red);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+.keyword-del:hover {
+  color: var(--red-dark);
+}
+
+/* --- 置信度等级徽章 --- */
+.confidence-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-left: 6px;
+}
+
+.conf-high {
+  background: var(--green-light);
+  color: var(--green-dark);
+}
+
+.conf-mid {
+  background: var(--orange-light);
+  color: var(--orange-dark);
+}
+
+.conf-low {
+  background: var(--red-light);
+  color: var(--red-dark);
+}
+
 /* --- 可解释规则说明 --- */
 .explainable-rules {
   margin-top: 16px;
@@ -887,6 +994,154 @@ table tbody tr.clickable {
   content: "▹";
   position: absolute;
   left: 2px;
+  color: var(--primary);
+}
+
+/* --- AI 来源标识条 --- */
+.ai-source-banner {
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.ai-source-llm {
+  background: #e8f5e9;
+  border: 1px solid #a5d6a7;
+  color: #2e7d32;
+}
+
+.ai-source-fallback {
+  background: #fff3e0;
+  border: 1px solid #ffcc80;
+  color: #e65100;
+}
+
+/* --- AI 来源元数据 --- */
+.ai-metadata {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--gray-50);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--gray-300);
+}
+
+.ai-metadata-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gray-500);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.ai-metadata-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+}
+
+.ai-meta-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.ai-meta-label {
+  color: var(--gray-500);
+  flex-shrink: 0;
+}
+
+.ai-meta-value {
+  font-weight: 600;
+  color: var(--gray-800);
+  text-align: right;
+}
+
+/* --- 处理时间线 --- */
+.timeline {
+  position: relative;
+  padding-left: 28px;
+}
+
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--gray-200);
+}
+
+.timeline-item {
+  position: relative;
+  padding: 8px 0;
+}
+
+.timeline-dot {
+  position: absolute;
+  left: -20px;
+  top: 12px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--gray-300);
+  background: var(--white);
+}
+
+.timeline-dot.done {
+  border-color: var(--green);
+  background: var(--green);
+}
+
+.timeline-dot.pending {
+  border-color: var(--gray-300);
+  background: var(--white);
+}
+
+.timeline-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.timeline-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-700);
+}
+
+.timeline-item.done .timeline-label {
+  color: var(--gray-800);
+}
+
+.timeline-item:not(.done) .timeline-label {
+  color: var(--gray-400);
+}
+
+.timeline-time {
+  font-size: 12px;
+  color: var(--gray-500);
+  font-family: "Consolas", "Courier New", monospace;
+}
+
+/* --- 闭环状态标签 --- */
+.closure-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.closure-completed { background: var(--green-light); color: var(--green-dark); }
+.closure-processing { background: var(--primary-light); color: var(--primary-dark); }
+.closure-pending { background: var(--orange-light); color: var(--orange-dark); }
+.closure-none { background: var(--gray-100); color: var(--gray-500); }
   color: var(--primary);
 }
 

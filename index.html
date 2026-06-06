@@ -24,9 +24,23 @@
         <a href="#" data-section="collaborationSection">协同处理</a>
         <a href="#" data-section="dashboardSection">管理驾驶舱</a>
         <a href="#" data-section="dataSection">数据记录</a>
+        <a href="#" data-section="ruleConfigSection">规则配置</a>
         <a href="#" data-section="aiDocSection">AI 功能说明</a>
         <a href="#" data-section="systemDocSection">系统文档</a>
       </nav>
+      <div class="role-switcher">
+        <label for="roleSelector">当前角色：</label>
+        <select id="roleSelector" onchange="onRoleChange()">
+          <option value="社区管理者">社区管理者</option>
+          <option value="网格员">网格员</option>
+          <option value="社区医生">社区医生</option>
+          <option value="物业/维修人员">物业/维修人员</option>
+          <option value="志愿者">志愿者</option>
+          <option value="老人/家属">老人/家属</option>
+        </select>
+        <span style="margin-left:16px"></span>
+        <button class="btn btn-sm btn-outline" onclick="togglePrivacy()" id="privacyToggleBtn" title="敏感信息默认脱敏显示">🔒 显示完整信息</button>
+      </div>
     </div>
   </header>
 
@@ -73,6 +87,11 @@
       <!-- 由 renderDataTables() 动态渲染 -->
     </section>
 
+    <!-- 模块 11：规则配置 -->
+    <section class="section" id="ruleConfigSection">
+      <!-- 由 renderRuleConfigPage() 动态渲染 -->
+    </section>
+
     <!-- 模块 9：AI 功能说明 -->
     <section class="section" id="aiDocSection">
       <!-- 由 renderAIDocPage() 动态渲染 -->
@@ -87,7 +106,7 @@
 
   <!-- 页脚 -->
   <footer class="footer">
-    社区独居老人照护风险预警与服务调度系统 V1.2 | 管理信息系统课程项目原型 | 纯前端演示系统
+    社区独居老人照护风险预警与服务调度系统 V1.10 | 智能辅助决策 | 纯前端原型系统
   </footer>
 
   <!-- JavaScript 模块（按依赖顺序加载） -->

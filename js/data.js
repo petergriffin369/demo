@@ -156,9 +156,19 @@ const RISK_KEYWORDS = {
  */
 function getInitialState() {
   return {
+    currentRole: '网格员',
     elders: JSON.parse(JSON.stringify(INITIAL_ELDERS)),
     resources: JSON.parse(JSON.stringify(INITIAL_RESOURCES)),
     careRecords: [],
-    workOrders: []
+    workOrders: [],
+    auditLogs: [],
+    customRiskKeywords: {
+      high: [],
+      medium: [],
+      health: [],
+      maintenance: [],
+      life: [],
+      companion: []
+    }
   };
 }

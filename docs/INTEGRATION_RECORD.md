@@ -2,7 +2,7 @@
 
 | 编号 | 模块名称 | 输入 | 输出 | 触发函数 | 联调结果 | 问题与处理方式 |
 |------|---------|------|------|---------|---------|--------------|
-| F01 | 报平安表单 → AI 风险识别 | 老人姓名、状态、描述、设备提醒 | 求助记录（含 AI 识别结果） | `analyzeRequest(record)` | 通过 | 确保表单字段完整，空值校验由 HTML required 属性处理 |
+| F01 | 报平安表单 → AI 风险识别 | 老人姓名、状态、描述、设备提醒 | 求助记录（含 LLM/规则引擎 AI 结果） | `analyzeRequestDefault(record)` | 通过 | 优先调用 DeepSeek LLM，失败自动降级规则引擎；PII 脱敏后发送 |
 | F02 | AI 风险识别 → 推荐责任主体/处理时限 | AI 识别结果（事件类型、风险等级） | 推荐责任人和时限 | `recommendAssignee(eventType, riskLevel)` | 通过 | 健康高风险→社区医生+网格员/30分钟，维修→物业/4小时等规则 |
 | F03 | AI 风险识别 → 可解释规则展示 | 求助记录、AI 结果 | 状态规则、设备规则、文本规则、分类规则、综合规则 | `buildExplainableRules(record, ai)` | 通过 | 五类规则清晰展示 AI 判断依据 |
 | F04 | AI 风险识别 → 人工复核 | AI 识别结果 | 复核后的最终风险等级（含 AI 修改留痕） | `renderReviewPage()` | 通过 | AI 判断和人工判断均需保存，isAiModified 记录是否修改 |
@@ -23,6 +23,10 @@
 | F19 | JSON 导入 → 结构校验 | JSON 字符串 | 校验通过/失败提示 | `importData(json)` | 通过 | 校验 elders、resources、careRecords、workOrders 四个数组 |
 | F20 | XSS 防护 → HTML 转义 | 用户输入文本 | 转义后的安全文本 | `escapeHtml(text)` | 通过 | 所有用户输入均已转义 |
 | F21 | 首页 → 工作台指标 | state 全量数据 | 关键指标卡片、待处理列表、快捷操作 | `renderHome()` | 通过 | 首页从课堂演示页改为系统工作台，重命名为首页概览 |
+| F22 | 隐私保护 → 数据脱敏 | 电话/地址/紧急联系人 | 脱敏后显示（138****0001） | `maskPhone()` / `maskAddress()` / `maskEmergencyContact()` | 通过 | 点击"显示完整信息"临时授权查看 |
+| F23 | 审计日志 → 操作留痕 | 关键操作触发 | 写入 state.auditLogs[] | `addAuditLog()` | 通过 | 日志含 logId/action/operatorRole/targetType/targetId/detail/createdAt |
+| F24 | 审计日志 → 数据展示 | state.auditLogs | 最近100条倒序表格 | `renderDataTables()` | 通过 | 含时间/操作角色/操作类型/对象类型/对象编号/操作说明 |
+| F25 | 导出/导入 → 日志完整性 | JSON 导出 | 含 auditLogs 字段 | `exportData()` / `importData()` | 通过 | 导出 JSON 包含完整审计日志 |
 
 ## 联调说明
 
@@ -37,5 +41,8 @@
 → 确认派单 → order.status = '已派单'
 → 协同处理 → 更新 order.status / result / rating / processRole / acceptedAt / completedAt / photoUploaded 
 → 管理看板 → 统计计算（今日/累计指标）
+→ 审计日志 → 每个操作节点写入 log（action + operatorRole + targetId + detail）
+→ 数据脱敏 → 电话/地址/紧急联系人在 UI 层自动掩码
+→ 导出/导入 → JSON 包含完整 auditLogs
 → 首页工作台 → 关键指标、待处理事项、快捷操作
 ```

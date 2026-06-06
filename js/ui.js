@@ -63,6 +63,8 @@ function showToast(message, type) {
   var toast = document.createElement('div');
   toast.className = 'toast toast-' + type;
   toast.textContent = message;
+  toast.setAttribute('role', 'alert');
+  toast.setAttribute('aria-live', 'assertive');
   container.appendChild(toast);
 
   setTimeout(function() {
@@ -79,9 +81,10 @@ function showToast(message, type) {
    ============================ */
 
 function riskTag(level) {
-  if (level === '高风险') return '<span class="tag tag-high">高风险</span>';
-  if (level === '中风险') return '<span class="tag tag-mid">中风险</span>';
-  if (level === '低风险') return '<span class="tag tag-low">低风险</span>';
+  // 颜色 + 图标双重标识，确保色觉障碍用户也可辨识
+  if (level === '高风险') return '<span class="tag tag-high" title="高风险">⚠ 高风险</span>';
+  if (level === '中风险') return '<span class="tag tag-mid" title="中风险">◈ 中风险</span>';
+  if (level === '低风险') return '<span class="tag tag-low" title="低风险">✔ 低风险</span>';
   return '<span class="tag tag-gray">' + escapeHtml(level) + '</span>';
 }
 
@@ -102,7 +105,56 @@ function emptyRow(colspan) {
 }
 
 function getStateSafe() {
-  return window.appState || { elders: [], resources: [], careRecords: [], workOrders: [] };
+  return window.appState || { elders: [], resources: [], careRecords: [], workOrders: [], auditLogs: [], customRiskKeywords: { high: [], medium: [], health: [], maintenance: [], life: [], companion: [] } };
+}
+
+/**
+ * 获取老人最近服务闭环状态
+ * @param {string} elderId 老人 ID
+ * @param {Object} state 全局状态
+ * @returns {string} HTML 标签
+ */
+function getElderClosureStatus(elderId, state) {
+  var orders = (state.workOrders || []).filter(function(o) { return o.elderId === elderId; });
+  if (orders.length === 0) {
+    var records = (state.careRecords || []).filter(function(r) { return r.elderId === elderId; });
+    if (records.length === 0) {
+      return '<span class="closure-badge closure-none">未提交</span>';
+    }
+    var unreviewed = records.filter(function(r) { return !r.reviewed; });
+    if (unreviewed.length > 0) {
+      return '<span class="closure-badge closure-pending">待复核</span>';
+    }
+    return '<span class="closure-badge closure-none">未生成工单</span>';
+  }
+  // 按创建时间排序，取最新
+  orders.sort(function(a, b) { return b.createdAt.localeCompare(a.createdAt); });
+  var latest = orders[0];
+  if (latest.status === '已完成' || latest.status === '已关闭') {
+    return '<span class="closure-badge closure-completed">已完成</span>';
+  }
+  if (latest.status === '处理中') {
+    return '<span class="closure-badge closure-processing">处理中</span>';
+  }
+  if (latest.status === '已派单') {
+    return '<span class="closure-badge closure-processing">已派单</span>';
+  }
+  return '<span class="closure-badge closure-pending">待派单</span>';
+}
+
+/**
+ * 将系统角色映射为协同处理角色
+ * @param {string} systemRole 系统角色
+ * @returns {string} 协同处理角色
+ */
+function mapRoleToProcessRole(systemRole) {
+  var map = {
+    '网格员': '网格员',
+    '社区医生': '社区医生',
+    '物业/维修人员': '物业/维修人员',
+    '志愿者': '志愿者'
+  };
+  return map[systemRole] || '网格员';
 }
 
 /* ============================
@@ -208,18 +260,46 @@ function buildPendingList(unreviewed, pendingAssign, processing, highRiskUnfinis
  * 构建快捷操作按钮区
  */
 function buildQuickActions() {
-  var html = '<div class="card"><div class="card-title">快捷操作</div>'
-    + '<div class="quick-actions">'
-    + '<button class="btn btn-primary quick-btn" onclick="showSection(\'elderFormSection\');renderElderForm();">'
-    + '<span class="quick-btn-icon">＋</span>新增报平安 / 求助</button>'
-    + '<button class="btn btn-outline quick-btn" onclick="showSection(\'aiResultSection\');renderAIResult();">'
-    + '<span class="quick-btn-icon">🔍</span>查看智能风险识别</button>'
-    + '<button class="btn btn-outline quick-btn" onclick="showSection(\'workOrderSection\');renderWorkOrderPage();">'
-    + '<span class="quick-btn-icon">📋</span>查看工单调度</button>'
-    + '<button class="btn btn-outline quick-btn" onclick="showSection(\'dashboardSection\');renderDashboard();">'
-    + '<span class="quick-btn-icon">📊</span>查看管理驾驶舱</button>'
-    + '</div>'
-    + '</div>';
+  var state = getStateSafe();
+  var role = state.currentRole || '网格员';
+  var html = '<div class="card"><div class="card-title">快捷操作（' + escapeHtml(role) + '）</div>'
+    + '<div class="quick-actions">';
+
+  if (role === '老人/家属') {
+    html += '<button class="btn btn-primary quick-btn" onclick="showSection(\'elderFormSection\');renderElderForm();">'
+      + '<span class="quick-btn-icon">＋</span>提交报平安 / 求助</button>'
+      + '<button class="btn btn-outline quick-btn" onclick="showSection(\'collaborationSection\');renderCollaborationPage();">'
+      + '<span class="quick-btn-icon">📋</span>查看工单进度</button>';
+  } else if (role === '网格员') {
+    html += '<button class="btn btn-primary quick-btn" onclick="showSection(\'reviewSection\');renderReviewPage();">'
+      + '<span class="quick-btn-icon">✅</span>待复核记录</button>'
+      + '<button class="btn btn-primary quick-btn" onclick="showSection(\'workOrderSection\');renderWorkOrderPage();">'
+      + '<span class="quick-btn-icon">📋</span>工单调度</button>'
+      + '<button class="btn btn-outline quick-btn" onclick="showSection(\'elderFormSection\');renderElderForm();">'
+      + '<span class="quick-btn-icon">📝</span>巡访记录</button>';
+  } else if (role === '社区医生') {
+    html += '<button class="btn btn-primary quick-btn" onclick="showSection(\'workOrderSection\');renderWorkOrderPage();">'
+      + '<span class="quick-btn-icon">🏥</span>健康类工单</button>'
+      + '<button class="btn btn-outline quick-btn" onclick="showSection(\'collaborationSection\');renderCollaborationPage();">'
+      + '<span class="quick-btn-icon">⏳</span>处理中工单</button>';
+  } else if (role === '物业/维修人员') {
+    html += '<button class="btn btn-primary quick-btn" onclick="showSection(\'workOrderSection\');renderWorkOrderPage();">'
+      + '<span class="quick-btn-icon">🔧</span>维修类工单</button>';
+  } else if (role === '志愿者') {
+    html += '<button class="btn btn-primary quick-btn" onclick="showSection(\'workOrderSection\');renderWorkOrderPage();">'
+      + '<span class="quick-btn-icon">🤝</span>生活服务 / 陪诊类工单</button>'
+      + '<button class="btn btn-outline quick-btn" onclick="showSection(\'collaborationSection\');renderCollaborationPage();">'
+      + '<span class="quick-btn-icon">📋</span>处理中工单</button>';
+  } else if (role === '社区管理者') {
+    html += '<button class="btn btn-primary quick-btn" onclick="showSection(\'dashboardSection\');renderDashboard();">'
+      + '<span class="quick-btn-icon">📊</span>管理驾驶舱</button>'
+      + '<button class="btn btn-outline quick-btn" onclick="showSection(\'dataSection\');renderDataTables();">'
+      + '<span class="quick-btn-icon">📁</span>数据记录</button>'
+      + '<button class="btn btn-outline quick-btn" onclick="showSection(\'aiDocSection\');renderAIDocPage();">'
+      + '<span class="quick-btn-icon">⚙️</span>规则配置</button>';
+  }
+
+  html += '</div></div>';
   return html;
 }
 
@@ -239,12 +319,12 @@ function renderElderForm() {
   container.innerHTML = ''
     + '<h2 class="section-title">老人/家属端：报平安 / 求助提交</h2>'
     + '<div class="card">'
-    + '<div class="card-title">快速填充示例</div>'
+    + '<div class="card-title">常见场景快速录入</div>'
     + '<div class="example-btns">'
-    + '<button class="btn btn-outline btn-sm" onclick="fillExample(1)">示例 1：正常报平安（王奶奶）</button>'
-    + '<button class="btn btn-outline btn-sm" onclick="fillExample(2)">示例 2：中风险未报平安（李爷爷）</button>'
-    + '<button class="btn btn-warning btn-sm" onclick="fillExample(3)">示例 3：高风险跌倒（张阿姨）</button>'
-    + '<button class="btn btn-outline btn-sm" onclick="fillExample(4)">示例 4：维修类求助（陈爷爷）</button>'
+    + '<button class="btn btn-outline btn-sm" onclick="fillExample(1)">正常报平安场景（王奶奶）</button>'
+    + '<button class="btn btn-outline btn-sm" onclick="fillExample(2)">未报平安核实场景（李爷爷）</button>'
+    + '<button class="btn btn-warning btn-sm" onclick="fillExample(3)">跌倒紧急求助场景（张阿姨）</button>'
+    + '<button class="btn btn-outline btn-sm" onclick="fillExample(4)">居家维修求助场景（陈爷爷）</button>'
     + '</div>'
     + '</div>'
     + '<div class="card">'
@@ -265,6 +345,29 @@ function renderElderForm() {
     + '<div class="form-group">'
     + '<label>地址</label>'
     + '<input type="text" id="elderAddress" class="form-control" readonly>'
+    + '</div>'
+    + '<div class="form-row">'
+    + '<div class="form-group">'
+    + '<label>健康标签</label>'
+    + '<input type="text" id="elderHealthTags" class="form-control" readonly>'
+    + '</div>'
+    + '<div class="form-group">'
+    + '<label>紧急联系人</label>'
+    + '<input type="text" id="elderEmergencyContact" class="form-control" readonly>'
+    + '</div>'
+    + '</div>'
+    + '<div class="form-row">'
+    + '<div class="form-group">'
+    + '<label>服务等级</label>'
+    + '<input type="text" id="elderServiceLevel" class="form-control" readonly>'
+    + '</div>'
+    + '<div class="form-group">'
+    + '<label>是否需要回访</label>'
+    + '<select id="needFollowUpSelect" class="form-control">'
+    + '<option value="否">否</option>'
+    + '<option value="是">是</option>'
+    + '</select>'
+    + '</div>'
     + '</div>'
     + '<div class="form-row">'
     + '<div class="form-group">'
@@ -310,11 +413,20 @@ function renderElderForm() {
     + '</div>'
     + '<div class="form-group">'
     + '<label>描述</label>'
-    + '<textarea id="descText" class="form-control" placeholder="请描述老人当前情况..."></textarea>'
+    + '<textarea id="descText" class="form-control" placeholder="请描述老人当前情况..." maxlength="500"></textarea>'
+    + '</div>'
+    + '<div class="form-group">'
+    + '<label>期望处理方式</label>'
+    + '<select id="handlingMethodSelect" class="form-control">'
+    + '<option value="仅记录">仅记录</option>'
+    + '<option value="电话核实">电话核实</option>'
+    + '<option value="上门核实">上门核实</option>'
+    + '<option value="生成工单">生成工单</option>'
+    + '</select>'
     + '</div>'
     + '<div class="form-group">'
     + '<label>联系电话</label>'
-    + '<input type="text" id="phoneInput" class="form-control" placeholder="请输入联系电话">'
+    + '<input type="tel" id="phoneInput" class="form-control" placeholder="请输入联系电话" pattern="[0-9]{7,15}" maxlength="15" title="请输入 7-15 位数字电话号码">'
     + '</div>'
     + '<button type="button" class="btn btn-primary" onclick="submitCareRecord()">提交求助</button>'
     + '</form>'
@@ -330,10 +442,16 @@ function onElderChange() {
   var elder = state.elders.find(function(e) { return e.id === elderId; });
   if (elder) {
     document.getElementById('elderAge').value = elder.age;
-    document.getElementById('elderAddress').value = elder.address;
+    document.getElementById('elderAddress').value = privacyValue(elder.address, maskAddress);
+    document.getElementById('elderHealthTags').value = (elder.healthTags || []).join('、');
+    document.getElementById('elderEmergencyContact').value = privacyValue(elder.emergencyContact || '', maskEmergencyContact);
+    document.getElementById('elderServiceLevel').value = elder.serviceLevel || '';
   } else {
     document.getElementById('elderAge').value = '';
     document.getElementById('elderAddress').value = '';
+    document.getElementById('elderHealthTags').value = '';
+    document.getElementById('elderEmergencyContact').value = '';
+    document.getElementById('elderServiceLevel').value = '';
   }
 }
 
@@ -371,11 +489,16 @@ function buildRecordSummaryCard(record) {
     + '<div class="card-title">求助记录摘要</div>'
     + '<div class="detail-grid">'
     + '<div class="detail-item"><div class="detail-label">老人姓名</div><div class="detail-value">' + escapeHtml(record.elderName) + '</div></div>'
+    + '<div class="detail-item"><div class="detail-label">服务等级</div><div class="detail-value">' + escapeHtml(record.serviceLevel || '') + '</div></div>'
     + '<div class="detail-item"><div class="detail-label">今日状态</div><div class="detail-value">' + escapeHtml(record.status) + '</div></div>'
     + '<div class="detail-item"><div class="detail-label">求助类型</div><div class="detail-value">' + escapeHtml(record.requestType || '无') + '</div></div>'
     + '<div class="detail-item"><div class="detail-label">设备提醒</div><div class="detail-value">' + escapeHtml(record.deviceAlert || '无') + '</div></div>'
     + '<div class="detail-item"><div class="detail-label">提交人</div><div class="detail-value">' + escapeHtml(record.reporterRole || '') + '</div></div>'
     + '<div class="detail-item"><div class="detail-label">提交时间</div><div class="detail-value">' + escapeHtml(record.createdAt || '') + '</div></div>'
+    + '<div class="detail-item"><div class="detail-label">健康标签</div><div class="detail-value">' + escapeHtml((record.healthTags || []).join('、')) + '</div></div>'
+    + '<div class="detail-item"><div class="detail-label">紧急联系人</div><div class="detail-value">' + escapeHtml(privacyValue(record.emergencyContact || '', maskEmergencyContact)) + '</div></div>'
+    + '<div class="detail-item"><div class="detail-label">是否回访</div><div class="detail-value">' + escapeHtml(record.needFollowUp || '') + '</div></div>'
+    + '<div class="detail-item"><div class="detail-label">处理方式</div><div class="detail-value">' + escapeHtml(record.handlingMethod || '') + '</div></div>'
     + '<div class="detail-item" style="grid-column:1/-1"><div class="detail-label">描述</div><div class="detail-value">' + escapeHtml(record.description || '无') + '</div></div>'
     + '</div>'
     + '</div>';
@@ -385,7 +508,9 @@ function buildAIResultCard(record) {
   var ai = record.aiResult;
   if (!ai) return '';
 
-  var confPercent = Math.round(ai.confidence * 100) + '%';
+  var confValue = ai.confidence;
+  var confPercent = Math.round(confValue * 100) + '%';
+  var confLevel = getConfidenceLevel(confValue);
 
   // 获取推荐责任主体和处理时限
   var recommend = recommendAssignee(ai.eventType, ai.riskLevel);
@@ -393,13 +518,39 @@ function buildAIResultCard(record) {
   // 生成可解释规则说明
   var explainableRules = buildExplainableRules(record, ai);
 
+  // 判断 AI 来源
+  var isLLM = (ai.aiModeUsed === 'llm' && ai.fallback === false);
+  var isFallback = (ai.fallback === true);
+
   var html = ''
     + '<div class="card ai-result-card">'
     + '<div class="ai-result-header">'
     + '<h4>AI 识别结果</h4>'
-    + '<div class="ai-confidence">置信度：' + confPercent + '</div>'
+    + '<div class="ai-confidence">'
+    + '置信度：' + confPercent
+    + ' <span class="confidence-badge ' + confLevel.cls + '">' + confLevel.label + '</span>'
     + '</div>'
-    + '<div class="detail-grid">'
+    + '</div>';
+
+  // === AI 来源标识条 ===
+  if (isLLM) {
+    html += '<div class="ai-source-banner ai-source-llm">'
+      + '🤖 当前结果来自 <strong>DeepSeek 真实大语言模型 API</strong>'
+      + '</div>';
+  } else if (isFallback) {
+    html += '<div class="ai-source-banner ai-source-fallback">'
+      + '⚠️ 当前结果来自 <strong>本地规则引擎兜底</strong>，DeepSeek 调用失败'
+      + '</div>';
+  }
+
+  // 低置信度提示
+  if (confValue < 0.70) {
+    html += '<div class="alert alert-warning" style="margin-bottom:16px">'
+      + '⚠️ 当前 AI 置信度较低（' + confPercent + '），建议网格员重点核实。'
+      + '</div>';
+  }
+
+  html += '<div class="detail-grid">'
     + '<div class="detail-item"><div class="detail-label">风险等级</div><div class="detail-value">' + riskTag(ai.riskLevel) + '</div></div>'
     + '<div class="detail-item"><div class="detail-label">事件类型</div><div class="detail-value"><span class="tag tag-info">' + escapeHtml(ai.eventType) + '</span></div></div>'
     + '<div class="detail-item"><div class="detail-label">推荐责任主体</div><div class="detail-value" style="font-weight:600">' + escapeHtml(recommend.assignee) + '</div></div>'
@@ -407,6 +558,19 @@ function buildAIResultCard(record) {
     + '<div class="detail-item" style="grid-column:1/-1"><div class="detail-label">触发原因</div>'
     + '<ul class="ai-reasons">' + ai.reasons.map(function(r) { return '<li>' + escapeHtml(r) + '</li>'; }).join('') + '</ul></div>'
     + '<div class="detail-item" style="grid-column:1/-1"><div class="detail-label">建议处置</div><div class="detail-value" style="font-weight:600;color:var(--primary-dark)">' + escapeHtml(ai.suggestion) + '</div></div>'
+    + '</div>';
+
+  // === AI 来源元数据 ===
+  html += '<div class="ai-metadata">'
+    + '<div class="ai-metadata-title">AI 来源信息</div>'
+    + '<div class="ai-metadata-grid">'
+    + '<div class="ai-meta-item"><span class="ai-meta-label">AI 来源</span><span class="ai-meta-value">' + escapeHtml(ai.modelProvider || '未知') + '</span></div>'
+    + '<div class="ai-meta-item"><span class="ai-meta-label">模型名称</span><span class="ai-meta-value">' + escapeHtml(ai.modelName || '未知') + '</span></div>'
+    + '<div class="ai-meta-item"><span class="ai-meta-label">是否真实 API</span><span class="ai-meta-value">' + (isLLM ? '<span style="color:var(--green);font-weight:600">是 ✓</span>' : '<span style="color:var(--orange);font-weight:600">否 ✗</span>') + '</span></div>'
+    + '<div class="ai-meta-item"><span class="ai-meta-label">是否兜底</span><span class="ai-meta-value">' + (isFallback ? '<span style="color:var(--orange);font-weight:600">是 ⚠</span>' : '<span style="color:var(--green);font-weight:600">否</span>') + '</span></div>'
+    + '<div class="ai-meta-item"><span class="ai-meta-label">兜底原因</span><span class="ai-meta-value">' + escapeHtml(ai.fallbackReason || '不适用') + '</span></div>'
+    + '<div class="ai-meta-item"><span class="ai-meta-label">是否已脱敏</span><span class="ai-meta-value">' + (ai.privacyProtected ? '<span style="color:var(--green);font-weight:600">是 🔒</span>' : '<span style="color:var(--gray-500)">否</span>') + '</span></div>'
+    + '</div>'
     + '</div>';
 
   // 可解释规则说明
@@ -419,6 +583,17 @@ function buildAIResultCard(record) {
 
   html += '</div>';
   return html;
+}
+
+/**
+ * 获取置信度等级
+ * @param {number} confidence 置信度数值 (0-1)
+ * @returns {{ label: string, cls: string }}
+ */
+function getConfidenceLevel(confidence) {
+  if (confidence >= 0.80) return { label: '高置信度', cls: 'conf-high' };
+  if (confidence >= 0.65) return { label: '中置信度', cls: 'conf-mid' };
+  return { label: '低置信度', cls: 'conf-low' };
 }
 
 /**
@@ -459,18 +634,35 @@ function buildExplainableRules(record, ai) {
 
   // 文本规则
   var allKeywords = [];
-  var highKeywords = RISK_KEYWORDS.high || [];
-  var mediumKeywords = RISK_KEYWORDS.medium || [];
+  var customKeywords = [];
+  var highKeywords = (RISK_KEYWORDS.high || []).concat(
+    (window.appState && window.appState.customRiskKeywords && window.appState.customRiskKeywords.high) ? window.appState.customRiskKeywords.high : []
+  );
+  var mediumKeywords = (RISK_KEYWORDS.medium || []).concat(
+    (window.appState && window.appState.customRiskKeywords && window.appState.customRiskKeywords.medium) ? window.appState.customRiskKeywords.medium : []
+  );
   for (var i = 0; i < highKeywords.length; i++) {
     if (desc.indexOf(highKeywords[i]) !== -1) allKeywords.push(highKeywords[i]);
   }
   for (var j = 0; j < mediumKeywords.length; j++) {
     if (desc.indexOf(mediumKeywords[j]) !== -1) allKeywords.push(mediumKeywords[j]);
   }
+  // 检测哪些是自定义关键词
+  var customHigh = (window.appState && window.appState.customRiskKeywords && window.appState.customRiskKeywords.high) ? window.appState.customRiskKeywords.high : [];
+  var customMedium = (window.appState && window.appState.customRiskKeywords && window.appState.customRiskKeywords.medium) ? window.appState.customRiskKeywords.medium : [];
+  for (var k = 0; k < allKeywords.length; k++) {
+    if (customHigh.indexOf(allKeywords[k]) !== -1 || customMedium.indexOf(allKeywords[k]) !== -1) {
+      customKeywords.push(allKeywords[k]);
+    }
+  }
   if (allKeywords.length > 0) {
     rules.push('文本规则：描述包含"' + allKeywords.join('、') + '"等关键词');
   } else {
     rules.push('文本规则：描述中未匹配到风险关键词');
+  }
+  // 标注自定义关键词命中
+  if (customKeywords.length > 0) {
+    rules.push('自定义规则：命中自定义规则关键词"' + customKeywords.join('、') + '"');
   }
 
   // 分类规则
@@ -483,6 +675,11 @@ function buildExplainableRules(record, ai) {
       '其他': '其他类'
     };
     rules.push('分类规则：求助类型为"' + requestType + '"，识别为' + (typeLabelMap[requestType] || requestType) + '事件');
+  }
+
+  // 服务等级规则
+  if (record.serviceLevel === '重点关注') {
+    rules.push('档案规则：老人服务等级为"重点关注"，纳入重点识别范围');
   }
 
   // 置信度说明
@@ -517,6 +714,8 @@ function renderReviewPage() {
   }
 
   container.innerHTML = html;
+  // 页面渲染后检查 AI 修改状态
+  setTimeout(function() { checkAiModification(); }, 50);
 }
 
 function buildReviewForm(record) {
@@ -525,13 +724,13 @@ function buildReviewForm(record) {
   return ''
     + '<div class="card">'
     + '<div class="card-title">人工复核</div>'
-    + '<div class="alert alert-info">请根据实际情况确认或修改 AI 的判断结果。AI 判断和人工最终判断都将被记录。</div>'
+    + '<div class="alert alert-info">请根据实际情况确认或修改 AI 的判断结果。AI 判断和人工最终判断都将被记录。如修改 AI 判断，必须填写修改原因。</div>'
     + '<form id="reviewForm" onsubmit="return false;">'
     + '<input type="hidden" id="reviewRecordId" value="' + record.id + '">'
     + '<div class="form-row">'
     + '<div class="form-group">'
     + '<label>复核风险等级 <span class="required">*</span></label>'
-    + '<select id="reviewRiskLevel" class="form-control" required>'
+    + '<select id="reviewRiskLevel" class="form-control" required onchange="checkAiModification()">'
     + '<option value="低风险"' + (ai.riskLevel === '低风险' ? ' selected' : '') + '>低风险</option>'
     + '<option value="中风险"' + (ai.riskLevel === '中风险' ? ' selected' : '') + '>中风险</option>'
     + '<option value="高风险"' + (ai.riskLevel === '高风险' ? ' selected' : '') + '>高风险</option>'
@@ -539,7 +738,7 @@ function buildReviewForm(record) {
     + '</div>'
     + '<div class="form-group">'
     + '<label>复核事件类型 <span class="required">*</span></label>'
-    + '<select id="reviewEventType" class="form-control" required>'
+    + '<select id="reviewEventType" class="form-control" required onchange="checkAiModification()">'
     + buildEventTypeOptions(ai.eventType)
     + '</select>'
     + '</div>'
@@ -547,6 +746,10 @@ function buildReviewForm(record) {
     + '<div class="form-group">'
     + '<label>复核意见</label>'
     + '<textarea id="reviewComment" class="form-control" placeholder="请填写复核意见..."></textarea>'
+    + '</div>'
+    + '<div class="form-group" id="correctionReasonGroup" style="display:none">'
+    + '<label>修改原因 <span class="required" style="color:var(--red)">*</span>（修改了 AI 判断必须填写）</label>'
+    + '<textarea id="correctionReason" class="form-control" placeholder="请说明为什么修改 AI 的判断结果..."></textarea>'
     + '</div>'
     + '<div class="form-group">'
     + '<label>是否生成工单 <span class="required">*</span></label>'
@@ -671,7 +874,7 @@ function showWorkOrderDetail(orderId) {
     + '<div class="detail-item"><div class="detail-label">工单编号</div><div class="detail-value">' + escapeHtml(order.id) + '</div></div>'
     + '<div class="detail-item"><div class="detail-label">关联记录编号</div><div class="detail-value">' + escapeHtml(order.recordId || '—') + '</div></div>'
     + '<div class="detail-item"><div class="detail-label">老人姓名</div><div class="detail-value">' + escapeHtml(order.elderName) + '</div></div>'
-    + '<div class="detail-item"><div class="detail-label">地址</div><div class="detail-value">' + escapeHtml(order.address) + '</div></div>'
+    + '<div class="detail-item"><div class="detail-label">地址</div><div class="detail-value">' + escapeHtml(privacyValue(order.address, maskAddress)) + '</div></div>'
     + '<div class="detail-item"><div class="detail-label">风险等级</div><div class="detail-value">' + riskTag(order.riskLevel) + '</div></div>'
     + '<div class="detail-item"><div class="detail-label">事件类型</div><div class="detail-value">' + escapeHtml(order.eventType) + '</div></div>'
     + '<div class="detail-item"><div class="detail-label">AI 原始风险等级</div><div class="detail-value">' + riskTag(order.aiRiskLevel || '—') + '</div></div>'
@@ -719,6 +922,9 @@ function showWorkOrderDetail(orderId) {
     html += '</tbody></table></div></div>';
   }
 
+  // 处理时间线
+  html += buildOrderTimeline(order);
+
   // 操作按钮
   html += '<div class="btn-group">';
   if (order.status === '待派单') {
@@ -736,6 +942,103 @@ function showWorkOrderDetail(orderId) {
   detailDiv.innerHTML = html;
 }
 
+/**
+ * 构建工单处理时间线
+ * @param {Object} order 工单对象
+ * @returns {string} HTML
+ */
+function buildOrderTimeline(order) {
+  var state = getStateSafe();
+  // 查找关联的求助记录获取时间信息
+  var record = null;
+  var records = state.careRecords || [];
+  for (var i = 0; i < records.length; i++) {
+    if (records[i].id === order.recordId) {
+      record = records[i];
+      break;
+    }
+  }
+
+  var steps = [];
+
+  // 1. 求助提交
+  if (record && record.createdAt) {
+    steps.push({ label: '求助提交', time: record.createdAt, done: true });
+  }
+  // 2. AI 识别完成
+  if (record && record.aiAnalyzedAt) {
+    steps.push({ label: 'AI 识别完成', time: record.aiAnalyzedAt, done: true });
+  } else if (record && record.createdAt) {
+    steps.push({ label: 'AI 识别完成', time: record.createdAt, done: true });
+  }
+  // 3. 人工复核
+  if (record && record.reviewInfo && record.reviewInfo.reviewedAt) {
+    steps.push({ label: '人工复核', time: record.reviewInfo.reviewedAt, done: true });
+  } else if (record && record.reviewed) {
+    steps.push({ label: '人工复核', time: order.createdAt, done: true });
+  } else {
+    steps.push({ label: '人工复核', time: null, done: false });
+  }
+  // 4. 工单创建
+  if (order.createdAt) {
+    steps.push({ label: '工单创建', time: order.createdAt, done: true });
+  }
+  // 5. 派单
+  if (order.assignedAt) {
+    steps.push({ label: '派单确认', time: order.assignedAt, done: true });
+  } else if (order.status !== '待派单') {
+    steps.push({ label: '派单确认', time: order.createdAt, done: true });
+  } else {
+    steps.push({ label: '派单确认', time: null, done: false });
+  }
+  // 6. 接单
+  if (order.acceptedAt) {
+    steps.push({ label: '接单处理', time: order.acceptedAt, done: true });
+  } else if (order.status === '处理中' || order.status === '已完成' || order.status === '已关闭') {
+    steps.push({ label: '接单处理', time: null, done: true });
+  } else {
+    steps.push({ label: '接单处理', time: null, done: false });
+  }
+  // 7. 完成
+  if (order.completedAt) {
+    steps.push({ label: '处理完成', time: order.completedAt, done: true });
+  } else if (order.status === '已完成' || order.status === '已关闭') {
+    steps.push({ label: '处理完成', time: order.updatedAt, done: true });
+  } else {
+    steps.push({ label: '处理完成', time: null, done: false });
+  }
+  // 8. 评价
+  if (order.ratingAt) {
+    steps.push({ label: '评价反馈', time: order.ratingAt, done: true });
+  } else if (order.rating) {
+    steps.push({ label: '评价反馈', time: order.completedAt, done: true });
+  } else {
+    steps.push({ label: '评价反馈', time: null, done: false });
+  }
+
+  // 构建 HTML
+  var html = '<div class="card" style="margin-top:12px">'
+    + '<div class="card-title">处理时间线</div>'
+    + '<div class="timeline">';
+
+  for (var s = 0; s < steps.length; s++) {
+    var step = steps[s];
+    var dotClass = step.done ? 'timeline-dot done' : 'timeline-dot pending';
+    var timeText = step.time ? step.time : '待处理';
+    var itemClass = step.done ? 'timeline-item done' : 'timeline-item';
+    html += '<div class="' + itemClass + '">'
+      + '<div class="' + dotClass + '"></div>'
+      + '<div class="timeline-content">'
+      + '<div class="timeline-label">' + escapeHtml(step.label) + '</div>'
+      + '<div class="timeline-time">' + escapeHtml(timeText) + '</div>'
+      + '</div>'
+      + '</div>';
+  }
+
+  html += '</div></div>';
+  return html;
+}
+
 /* ============================
    模块 6：协同处理
    ============================ */
@@ -750,20 +1053,24 @@ function renderCollaborationPage() {
   });
   orders.sort(function(a, b) { return b.createdAt.localeCompare(a.createdAt); });
 
+  // 根据当前角色确定默认处理角色
+  var currentRole = state.currentRole || '网格员';
+  var defaultProcessRole = mapRoleToProcessRole(currentRole);
+
   var html = '<h2 class="section-title">协同处理</h2>';
 
   if (orders.length === 0) {
     html += '<div class="card"><div class="empty-state">暂无已派单或处理中的工单。"待派单"工单请先在"工单调度"页面确认派单。</div></div>';
   } else {
+    var roles = ['网格员', '社区医生', '物业/维修人员', '志愿者'];
     html += '<div class="card">'
-      + '<div class="card-title">选择处理角色</div>'
-      + '<div class="role-selector">'
-      + '<div class="role-option selected" data-role="网格员" onclick="selectRole(this)">网格员</div>'
-      + '<div class="role-option" data-role="社区医生" onclick="selectRole(this)">社区医生</div>'
-      + '<div class="role-option" data-role="物业/维修人员" onclick="selectRole(this)">物业/维修人员</div>'
-      + '<div class="role-option" data-role="志愿者" onclick="selectRole(this)">志愿者</div>'
-      + '</div>'
-      + '</div>';
+      + '<div class="card-title">选择处理角色（当前：' + escapeHtml(currentRole) + '）</div>'
+      + '<div class="role-selector">';
+    roles.forEach(function(r) {
+      var isSelected = (r === defaultProcessRole) ? ' selected' : '';
+      html += '<div class="role-option' + isSelected + '" data-role="' + r + '" onclick="selectRole(this)">' + r + '</div>';
+    });
+    html += '</div></div>';
 
     html += '<div class="card"><div class="card-title">工单列表</div>'
       + '<div class="table-wrap"><table><thead><tr>'
@@ -802,6 +1109,7 @@ function buildCollaborationButtons(order) {
 }
 
 function showProcessForm(orderId) {
+  window.currentProcessOrderId = orderId;
   var state = getStateSafe();
   var order = state.workOrders.find(function(o) { return o.id === orderId; });
   if (!order) return;
@@ -872,6 +1180,7 @@ function renderDashboard() {
     + buildStatCard('已完成工单', metrics.completedOrderCount, 'stat-green')
     + buildStatCard('累计工单数', metrics.totalOrderCount, '')
     + buildStatCard('工单完成率', metrics.completionRate, '')
+    + buildStatCard('高风险闭环率', metrics.highRiskClosureRate, 'stat-red')
     + buildStatCard('平均响应(分)', metrics.avgResponseMinutes, '')
     + buildStatCard('AI修改次数', metrics.aiModifiedCount, 'stat-orange')
     + '</div>';
@@ -881,6 +1190,9 @@ function renderDashboard() {
     + buildDistCard('风险分布', metrics.riskDistribution)
     + buildDistCard('工单状态分布', metrics.workOrderDistribution)
     + '</div>';
+
+  // AI 纠错分析
+  html += buildAICorrectionCard(metrics.aiCorrections, metrics.aiModifiedCount);
 
   // 重点老人列表
   html += buildKeyEldersCard(state);
@@ -921,6 +1233,34 @@ function buildDistCard(title, dist) {
     entries.forEach(function(e) {
       var pct = total > 0 ? Math.round(e[1] / total * 100) + '%' : '0%';
       html += '<tr><td>' + escapeHtml(e[0]) + '</td><td>' + e[1] + '（' + pct + '）</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function buildAICorrectionCard(corrections, totalModified) {
+  var html = '<div class="card"><div class="card-title">AI 纠错分析</div>';
+  if (corrections.length === 0) {
+    html += '<div class="empty-state">暂无 AI 纠错记录，所有 AI 判断均被人工确认通过。</div>';
+  } else {
+    html += '<p style="font-size:14px;color:var(--gray-600);margin-bottom:12px">'
+      + '共 <strong style="color:var(--orange)">' + totalModified + '</strong> 次人工修改 AI 判断。'
+      + '人工修改不代表 AI 错误，而是作为后续规则优化的重要参考依据。</p>';
+    html += '<div class="table-wrap"><table><thead><tr>'
+      + '<th>老人</th><th>记录时间</th><th>AI 风险</th><th>复核风险</th><th>AI 事件</th><th>复核事件</th><th>修改原因</th>'
+      + '</tr></thead><tbody>';
+    corrections.forEach(function(c) {
+      html += '<tr>'
+        + '<td>' + escapeHtml(c.elderName) + '</td>'
+        + '<td>' + escapeHtml(c.createdAt || '') + '</td>'
+        + '<td>' + riskTag(c.aiRiskLevel) + '</td>'
+        + '<td>' + riskTag(c.reviewRiskLevel) + '</td>'
+        + '<td>' + escapeHtml(c.aiEventType) + '</td>'
+        + '<td>' + escapeHtml(c.reviewEventType) + '</td>'
+        + '<td>' + escapeHtml(c.correctionReason || '未填写') + '</td>'
+        + '</tr>';
     });
     html += '</tbody></table></div>';
   }
@@ -982,8 +1322,8 @@ function renderDataTables() {
   // 操作按钮
   html += '<div class="card">'
     + '<div class="btn-group">'
-    + '<button class="btn btn-primary" onclick="loadSampleData()">载入示例数据</button>'
-    + '<button class="btn btn-danger" onclick="clearAllData()">清空演示数据</button>'
+    + '<button class="btn btn-primary" onclick="loadSampleData()">载入场景数据</button>'
+    + '<button class="btn btn-danger" onclick="clearAllData()">清空业务数据</button>'
     + '<button class="btn btn-outline" onclick="downloadJSON()">导出当前数据（JSON）</button>'
     + '<button class="btn btn-outline" onclick="showImportDialog()">从 JSON 导入数据</button>'
     + '</div>'
@@ -996,13 +1336,15 @@ function renderDataTables() {
     html += '<div class="empty-state">暂无数据</div>';
   } else {
     html += '<div class="table-wrap"><table><thead><tr>'
-      + '<th>老人 ID</th><th>姓名</th><th>年龄</th><th>地址</th><th>健康标签</th><th>紧急联系人</th><th>服务等级</th><th>最近状态</th>'
+      + '<th>老人 ID</th><th>姓名</th><th>年龄</th><th>地址</th><th>健康标签</th><th>紧急联系人</th><th>服务等级</th><th>最近状态</th><th>服务闭环</th>'
       + '</tr></thead><tbody>';
     state.elders.forEach(function(e) {
+      var closureStatus = getElderClosureStatus(e.id, state);
       html += '<tr>'
-        + '<td>' + escapeHtml(e.id) + '</td><td>' + escapeHtml(e.name) + '</td><td>' + e.age + '</td><td>' + escapeHtml(e.address) + '</td>'
-        + '<td>' + escapeHtml((e.healthTags || []).join('、')) + '</td><td>' + escapeHtml(e.emergencyContact) + '</td>'
+        + '<td>' + escapeHtml(e.id) + '</td><td>' + escapeHtml(e.name) + '</td><td>' + e.age + '</td><td>' + escapeHtml(privacyValue(e.address, maskAddress)) + '</td>'
+        + '<td>' + escapeHtml((e.healthTags || []).join('、')) + '</td><td>' + escapeHtml(privacyValue(e.emergencyContact, maskEmergencyContact)) + '</td>'
         + '<td>' + escapeHtml(e.serviceLevel) + '</td><td>' + escapeHtml(e.lastStatus) + '</td>'
+        + '<td>' + closureStatus + '</td>'
         + '</tr>';
     });
     html += '</tbody></table></div>';
@@ -1016,6 +1358,7 @@ function renderDataTables() {
   } else {
     html += '<div class="table-wrap"><table><thead><tr>'
       + '<th>记录 ID</th><th>时间</th><th>老人</th><th>状态</th><th>求助类型</th><th>设备提醒</th>'
+      + '<th>服务等级</th><th>是否回访</th><th>处理方式</th>'
       + '<th>描述</th><th>AI 风险</th><th>AI 事件类型</th><th>AI 置信度</th>'
       + '<th>复核风险</th><th>复核事件类型</th><th>是否已复核</th><th>AI 被修改</th>'
       + '</tr></thead><tbody>';
@@ -1024,6 +1367,9 @@ function renderDataTables() {
       html += '<tr>'
         + '<td>' + escapeHtml(r.id) + '</td><td>' + escapeHtml(r.createdAt) + '</td><td>' + escapeHtml(r.elderName) + '</td>'
         + '<td>' + escapeHtml(r.status) + '</td><td>' + escapeHtml(r.requestType || '无') + '</td><td>' + escapeHtml(r.deviceAlert || '无') + '</td>'
+        + '<td>' + escapeHtml(r.serviceLevel || '') + '</td>'
+        + '<td>' + escapeHtml(r.needFollowUp || '') + '</td>'
+        + '<td>' + escapeHtml(r.handlingMethod || '') + '</td>'
         + '<td>' + escapeHtml(r.description || '') + '</td><td>' + riskTag(ai.riskLevel || '') + '</td>'
         + '<td>' + escapeHtml(ai.eventType || '') + '</td><td>' + (ai.confidence ? Math.round(ai.confidence * 100) + '%' : '') + '</td>'
         + '<td>' + riskTag(r.reviewRiskLevel || '') + '</td><td>' + escapeHtml(r.reviewEventType || '') + '</td>'
@@ -1057,6 +1403,30 @@ function renderDataTables() {
   }
   html += '</div>';
 
+  // 审计日志表
+  html += '<div class="card"><div class="card-title">审计日志（最近 100 条）</div>';
+  var logs = state.auditLogs || [];
+  if (logs.length === 0) {
+    html += '<div class="empty-state">暂无审计日志</div>';
+  } else {
+    var recentLogs = logs.slice(-100).reverse();
+    html += '<div class="table-wrap"><table><thead><tr>'
+      + '<th>时间</th><th>操作角色</th><th>操作类型</th><th>对象类型</th><th>对象编号</th><th>操作说明</th>'
+      + '</tr></thead><tbody>';
+    recentLogs.forEach(function(log) {
+      html += '<tr>'
+        + '<td>' + escapeHtml(log.createdAt || '') + '</td>'
+        + '<td>' + escapeHtml(log.operatorRole || '') + '</td>'
+        + '<td>' + escapeHtml(log.action || '') + '</td>'
+        + '<td>' + escapeHtml(log.targetType || '') + '</td>'
+        + '<td>' + escapeHtml(log.targetId || '') + '</td>'
+        + '<td>' + escapeHtml(log.detail || '') + '</td>'
+        + '</tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+  html += '</div>';
+
   container.innerHTML = html;
 }
 
@@ -1068,7 +1438,7 @@ function showImportDialog() {
     + '<div class="card-title">从 JSON 导入数据</div>'
     + '<div class="form-group">'
     + '<label>粘贴 JSON 数据</label>'
-    + '<textarea id="importJsonText" class="form-control" rows="6" placeholder="请粘贴之前导出的 JSON 数据..."></textarea>'
+    + '<textarea id="importJsonText" class="form-control" rows="6" placeholder="请粘贴之前导出的 JSON 数据..." maxlength="100000"></textarea>'
     + '</div>'
     + '<div class="btn-group">'
     + '<button class="btn btn-primary" onclick="doImport()">确认导入</button>'
@@ -1085,7 +1455,7 @@ function renderAIDocPage() {
   var container = document.getElementById('aiDocSection');
   if (!container) return;
   container.innerHTML = ''
-    + '<h2 class="section-title">嵌入式 AI 能力演示：风险识别与派单推荐智能辅助</h2>'
+    + '<h2 class="section-title">智能辅助功能说明：风险识别与派单推荐</h2>'
     + '<div class="doc-section">'
     + '<div class="card">'
     + '<h3>一、AI 嵌入节点</h3>'
@@ -1134,7 +1504,7 @@ function renderAIDocPage() {
     + '</ul>'
     + '</div>'
     + '<div class="card">'
-    + '<h3>五、AI 功能演示脚本</h3>'
+    + '<h3>五、AI 功能运行示例</h3>'
     + '<div class="demo-script-box">'
     + '输入：\n老人跌倒，家属联系不上，设备触发跌倒提醒。\n\n'
     + 'AI 输出：\n风险等级：高风险\n事件类型：健康类\n触发原因：状态为"紧急求助"，设备触发"跌倒提醒"，描述包含"跌倒""联系不上"\n'
@@ -1145,9 +1515,21 @@ function renderAIDocPage() {
     + '</div>'
     + '</div>'
     + '<div class="card">'
-    + '<h3>六、技术实现说明</h3>'
-    + '<p>本原型阶段采用<strong>规则引擎</strong>模拟嵌入式 AI 能力，目的是展示 AI 如何服务业务流程。'
-    + '后续可替换为文本分类模型、大语言模型接口或轻量化机器学习模型，但仍必须保留人工复核和风险边界。</p>'
+    + '<h3>六、AI 复盘机制</h3>'
+    + '<ul>'
+    + '<li><strong>人工修改 ≠ AI 错误：</strong>人工复核修改 AI 判断结果，不是否定 AI，而是为后续规则优化提供参考依据。所有修改记录均在管理驾驶舱"AI 纠错分析"中可查。</li>'
+    + '<li><strong>高风险场景必复核：</strong>所有求助记录均需人工复核，高风险事件必须生成工单并由网格员确认处置方案。</li>'
+    + '<li><strong>不输出医疗诊断：</strong>系统不输出确诊、治疗方案等医疗结论，不替代专业判断。风险等级仅用于服务调度优先级排序。</li>'
+    + '<li><strong>置信度分级提示：</strong>高置信度（≥80%）可快速复核，中置信度（65%-79%）建议关注，低置信度（＜65%）强制提示重点核实。</li>'
+    + '<li><strong>纠错留痕：</strong>人工修改 AI 判断时，必须填写修改原因，所有修改痕迹均持久化存储。</li>'
+    + '<li><strong>规则持续优化：</strong>通过管理驾驶舱的 AI 纠错分析，社区管理者可定期复盘修改模式，调整规则配置中的关键词和规则参数。</li>'
+    + '</ul>'
+    + '</div>'
+    + '<div class="card">'
+    + '<h3>七、技术实现说明</h3>'
+    + '<p>系统<strong>默认接入 DeepSeek 真实大语言模型 API</strong>（deepseek-chat），通过本地代理服务（<code>server/server.js</code>）安全调用，API Key 仅存放在服务端 <code>.env</code> 中，不暴露到前端。</p>'
+    + '<p>当 DeepSeek 不可用（网络异常、Key 错误、超时、返回格式异常）时，系统<strong>自动降级</strong>为本地规则引擎（<code>js/aiEngine.js</code>）兜底，确保业务流程不中断。</p>'
+    + '<p>AI 识别结果卡片中明确标注数据来源（DeepSeek LLM / 规则引擎兜底）、模型名称、是否兜底、兜底原因和隐私脱敏状态，所有 AI 判断和人工修改均需留痕。</p>'
     + '</div>'
     + '</div>';
 }
@@ -1164,7 +1546,7 @@ function renderSystemDocPage() {
     + '<div class="doc-section">'
     + '<div class="card">'
     + '<h3>原型系统说明</h3>'
-    + '<p>社区独居老人照护风险预警与服务调度系统 V1.2。使用纯 HTML + CSS + JavaScript 实现，所有数据存储在浏览器 localStorage 中，可在本地直接双击 index.html 运行。</p>'
+    + '<p>社区独居老人照护风险预警与服务调度系统 V1.9。使用纯 HTML + CSS + JavaScript 实现，所有数据存储在浏览器 localStorage 中，可在本地直接双击 index.html 运行。</p>'
     + '</div>'
     + '<div class="card">'
     + '<h3>页面实现清单</h3>'
@@ -1179,6 +1561,7 @@ function renderSystemDocPage() {
     + '<tr><td>模块 8</td><td>数据记录</td><td>renderDataTables()</td></tr>'
     + '<tr><td>模块 9</td><td>AI 功能说明</td><td>renderAIDocPage()</td></tr>'
     + '<tr><td>模块 10</td><td>系统文档</td><td>renderSystemDocPage()</td></tr>'
+    + '<tr><td>模块 11</td><td>规则配置</td><td>renderRuleConfigPage()</td></tr>'
     + '</tbody></table></div>'
     + '</div>'
     + '<div class="card">'
@@ -1194,6 +1577,16 @@ function renderSystemDocPage() {
     + '</tbody></table></div>'
     + '</div>'
     + '<div class="card">'
+    + '<h3>规则配置说明</h3>'
+    + '<ul style="padding-left:20px;font-size:14px;color:var(--gray-700);line-height:2">'
+    + '<li><strong>默认规则来源：</strong><code>data.js</code> 中的 <code>RISK_KEYWORDS</code> 常量，包含高风险、中风险、健康类、维修类、生活服务类、陪诊类六大类关键词。</li>'
+    + '<li><strong>自定义规则来源：</strong><code>localStorage</code> 中 <code>customRiskKeywords</code> 字段，用户可通过"规则配置"页面在线增删关键词。</li>'
+    + '<li><strong>规则合并策略：</strong>AI 分析引擎（<code>aiEngine.js</code>）通过 <code>getMergedRiskKeywords()</code> 合并默认规则和自定义规则后共同生效。</li>'
+    + '<li><strong>后续迁移路径：</strong>接入真实后端时，<code>RISK_KEYWORDS</code> 可迁移到数据库规则表，<code>customRiskKeywords</code> 改为后端 API 读写，前端无需改动分析逻辑。</li>'
+    + '<li><strong>可解释性：</strong>自定义关键词命中后，AI 结果和可解释规则说明中均标注"命中自定义规则关键词"，便于回溯规则来源。</li>'
+    + '</ul>'
+    + '</div>'
+    + '<div class="card">'
     + '<h3>版本迭代记录</h3>'
     + '<div class="table-wrap"><table><thead><tr><th>版本</th><th>内容</th></tr></thead><tbody>'
     + '<tr><td>V0.1</td><td>完成基础页面结构和导航</td></tr>'
@@ -1201,16 +1594,131 @@ function renderSystemDocPage() {
     + '<tr><td>V0.3</td><td>完成 AI 风险识别与派单推荐</td></tr>'
     + '<tr><td>V0.4</td><td>完成人工复核和工单生成</td></tr>'
     + '<tr><td>V0.5</td><td>完成协同处理和管理驾驶舱</td></tr>'
-    + '<tr><td>V1.0</td><td>整理文档、演示脚本和测试数据</td></tr>'
-    + '<tr><td>V1.1</td><td>新增推荐责任主体、可解释规则、协同处理留痕、演示进度提示、安全防护、今日/累计指标</td></tr>'
+    + '<tr><td>V1.0</td><td>整理文档、场景脚本和测试数据</td></tr>'
+    + '<tr><td>V1.1</td><td>新增推荐责任主体、可解释规则、协同处理留痕、进度提示、安全防护、今日/累计指标</td></tr>'
+    + '<tr><td>V1.2</td><td>首页重构为系统工作台，清退课堂演示内容</td></tr>'
+    + '<tr><td>V1.3</td><td>页面业务化表达优化，去除演示/示例用语</td></tr>'
+    + '<tr><td>V1.4</td><td>表单字段完整性优化，新增服务等级/回访/处理方式</td></tr>'
+    + '<tr><td>V1.5</td><td>角色权限与页面入口优化，六角色差异化首页</td></tr>'
+    + '<tr><td>V1.6</td><td>风险规则可配置，支持自定义关键词增删</td></tr>'
+    + '<tr><td>V1.7</td><td>工单处理时间线与闭环状态追踪</td></tr>'
+    + '<tr><td>V1.8</td><td>AI 可信度分级展示与人工纠错机制</td></tr>'
+    + '<tr><td>V1.9</td><td>隐私保护、数据脱敏与审计日志</td></tr>'
     + '</tbody></table></div>'
     + '</div>'
     + '</div>';
 }
 
 /* ============================
+   模块 11：规则配置
+   ============================ */
+
+function renderRuleConfigPage() {
+  var container = document.getElementById('ruleConfigSection');
+  if (!container) return;
+  var state = getStateSafe();
+  var custom = state.customRiskKeywords || {};
+
+  var categories = [
+    { key: 'high', label: '高风险关键词', defaults: RISK_KEYWORDS.high },
+    { key: 'medium', label: '中风险关键词', defaults: RISK_KEYWORDS.medium },
+    { key: 'health', label: '健康类关键词', defaults: RISK_KEYWORDS.health },
+    { key: 'maintenance', label: '维修类关键词', defaults: RISK_KEYWORDS.maintenance },
+    { key: 'life', label: '生活服务类关键词', defaults: RISK_KEYWORDS.life },
+    { key: 'companion', label: '陪诊类关键词', defaults: RISK_KEYWORDS.companion }
+  ];
+
+  var html = '<h2 class="section-title">风险规则配置</h2>';
+
+  // 新增关键词区域
+  html += '<div class="card">'
+    + '<div class="card-title">新增自定义规则关键词</div>'
+    + '<div class="form-row" style="align-items:flex-end">'
+    + '<div class="form-group">'
+    + '<label>规则类型</label>'
+    + '<select id="customKeywordCategory" class="form-control">';
+  categories.forEach(function(c) {
+    html += '<option value="' + c.key + '">' + c.label + '</option>';
+  });
+  html += '</select></div>'
+    + '<div class="form-group">'
+    + '<label>关键词</label>'
+    + '<input type="text" id="customKeywordText" class="form-control" placeholder="输入关键词，如：无法起身">'
+    + '</div>'
+    + '<div class="form-group">'
+    + '<button class="btn btn-primary" onclick="addCustomKeyword()">新增规则关键词</button>'
+    + '</div>'
+    + '</div>'
+    + '</div>';
+
+  // 各规则分类表格
+  categories.forEach(function(cat) {
+    var customs = (custom[cat.key] && Array.isArray(custom[cat.key])) ? custom[cat.key] : [];
+    var allKeywords = (cat.defaults || []).concat(customs);
+
+    html += '<div class="card">'
+      + '<div class="card-title">' + cat.label + '（共 ' + allKeywords.length + ' 个，其中自定义 ' + customs.length + ' 个）</div>'
+      + '<div class="keyword-tags">';
+    allKeywords.forEach(function(kw) {
+      var isCustom = (customs.indexOf(kw) !== -1);
+      if (isCustom) {
+        // 安全地将关键词作为 JS 字符串参数传递
+        var kwEscaped = kw.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+        html += '<span class="keyword-tag keyword-custom">'
+          + escapeHtml(kw)
+          + '<button class="keyword-del" onclick="deleteCustomKeyword(\'' + cat.key + '\',\'' + kwEscaped + '\')" title="删除自定义关键词">×</button>'
+          + '</span>';
+      } else {
+        html += '<span class="keyword-tag keyword-default">' + escapeHtml(kw) + '</span>';
+      }
+    });
+    html += '</div></div>';
+  });
+
+  // 说明卡片
+  html += '<div class="card">'
+    + '<div class="card-title">规则说明</div>'
+    + '<ul style="padding-left:20px;font-size:14px;color:var(--gray-700);line-height:2">'
+    + '<li>默认规则来自 <code>data.js</code> 中的 <code>RISK_KEYWORDS</code>，系统启动时自动加载。</li>'
+    + '<li>自定义规则存储在 <code>localStorage</code> 的 <code>customRiskKeywords</code> 字段中。</li>'
+    + '<li>AI 分析时合并默认规则与自定义规则共同生效。</li>'
+    + '<li>后续接入真实后端时，规则可迁移到数据库规则表中，支持更灵活的配置与管理。</li>'
+    + '<li>删除自定义关键词后立即生效，不影响默认规则。</li>'
+    + '</ul>'
+    + '</div>';
+
+  container.innerHTML = html;
+}
+
+/* ============================
    角色选择
    ============================ */
+
+/**
+ * 检查是否修改了 AI 判断，控制修改原因字段的显示
+ */
+function checkAiModification() {
+  var riskEl = document.getElementById('reviewRiskLevel');
+  var typeEl = document.getElementById('reviewEventType');
+  var reasonGroup = document.getElementById('correctionReasonGroup');
+  var recordIdEl = document.getElementById('reviewRecordId');
+
+  if (!riskEl || !typeEl || !reasonGroup || !recordIdEl) return;
+
+  var state = getStateSafe();
+  var recordId = recordIdEl.value;
+  var record = null;
+  for (var i = 0; i < state.careRecords.length; i++) {
+    if (state.careRecords[i].id === recordId) { record = state.careRecords[i]; break; }
+  }
+  if (!record || !record.aiResult) return;
+
+  var aiRisk = record.aiResult.riskLevel || '';
+  var aiType = record.aiResult.eventType || '';
+  var isModified = (aiRisk !== riskEl.value || aiType !== typeEl.value);
+
+  reasonGroup.style.display = isModified ? 'block' : 'none';
+}
 
 function selectRole(el) {
   var all = document.querySelectorAll('.role-option');
@@ -1233,4 +1741,7 @@ function fakeUpload() {
   if (status) {
     status.textContent = '照片已模拟上传成功';
   }
+  // 审计日志
+  var orderId = window.currentProcessOrderId || 'UNKNOWN';
+  addAuditLog('上传照片', '工单', orderId, '模拟上传现场照片');
 }

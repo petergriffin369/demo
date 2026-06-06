@@ -41,10 +41,12 @@ function calculateDashboardMetrics(state) {
     completedOrderCount: completedOrders.length,
     totalOrderCount: orders.length,
     completionRate: calculateCompletionRate(orders),
+    highRiskClosureRate: calculateHighRiskClosureRate(orders),
     avgResponseMinutes: avgResponse,
     aiModifiedCount: aiModifiedCount,
     riskDistribution: calculateRiskDistribution(records),
     workOrderDistribution: calculateWorkOrderDistribution(orders),
+    aiCorrections: getAICorrectionRecords(records),
     suggestions: generateManagementSuggestions(state)
   };
 }
@@ -91,6 +93,42 @@ function calculateCompletionRate(orders) {
   if (orders.length === 0) return '0%';
   const done = orders.filter(o => o.status === '已完成' || o.status === '已关闭').length;
   return Math.round((done / orders.length) * 100) + '%';
+}
+
+/**
+ * 计算高风险闭环完成率
+ * @param {Object[]} orders 工单列表
+ * @returns {string} 百分比字符串
+ */
+function calculateHighRiskClosureRate(orders) {
+  var highRiskOrders = orders.filter(function(o) { return o.riskLevel === '高风险'; });
+  if (highRiskOrders.length === 0) return '—';
+  var closed = highRiskOrders.filter(function(o) { return o.status === '已完成' || o.status === '已关闭'; });
+  return Math.round((closed.length / highRiskOrders.length) * 100) + '%';
+}
+
+/**
+ * 获取 AI 纠错记录列表
+ * @param {Object[]} records 求助记录列表
+ * @returns {Object[]} 被修改过的记录
+ */
+function getAICorrectionRecords(records) {
+  return records.filter(function(r) {
+    return r.reviewed && r.isAiModified === true;
+  }).map(function(r) {
+    var ai = r.aiResult || {};
+    return {
+      id: r.id,
+      elderName: r.elderName,
+      createdAt: r.createdAt,
+      aiRiskLevel: ai.riskLevel || '',
+      aiEventType: ai.eventType || '',
+      reviewRiskLevel: r.reviewRiskLevel || '',
+      reviewEventType: r.reviewEventType || '',
+      correctionReason: r.correctionReason || (r.reviewInfo ? r.reviewInfo.correctionReason || '' : ''),
+      reviewedAt: r.reviewInfo ? r.reviewInfo.reviewedAt || '' : ''
+    };
+  });
 }
 
 /**

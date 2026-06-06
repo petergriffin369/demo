@@ -22,26 +22,44 @@ eldercare-ai-demo/
 ├── js/
 │   ├── app.js              # 入口文件，初始化和事件绑定
 │   ├── data.js             # 初始模拟数据、角色、档案、规则
-│   ├── aiEngine.js         # 嵌入式 AI 模拟引擎
+│   ├── aiEngine.js         # AI 引擎（LLM 调用 + 规则引擎兜底）
 │   ├── workorderService.js # 工单创建、流转、评价
 │   ├── dashboardService.js # 统计指标计算
 │   ├── storage.js          # localStorage 读写
 │   └── ui.js               # DOM 渲染和页面切换
+├── server/
+│   ├── server.js           # DeepSeek API 本地代理服务
+│   ├── package.json        # Node.js 项目配置
+│   ├── .env.example        # API Key 配置模板
+│   └── README_SERVER.md    # 代理服务使用说明
 ├── docs/
 │   ├── README.md           # 本文件
 │   ├── AI_FUNCTION_DEMO.md # AI 功能演示说明
 │   ├── INTEGRATION_RECORD.md # 功能联调记录
 │   ├── CHANGELOG.md        # 版本迭代记录
-│   └── STABILITY_CHECK.md  # 稳定性检查报告
+│   ├── STABILITY_CHECK.md  # 稳定性检查报告
+│   └── AUDIT_FIX_REPORT.md # 审计整改报告
 └── assets/
     └── placeholder.txt
 ```
 
 ## 如何运行
 
+### 前端（必需）
 1. 直接双击 `index.html` 在浏览器中打开
-2. 无需安装任何依赖，无需启动服务器
-3. 所有数据存储在浏览器 localStorage 中
+2. 所有数据存储在浏览器 localStorage 中
+
+### DeepSeek AI 代理（可选）
+如需使用真实大语言模型进行风险识别：
+
+```bash
+cd server
+cp .env.example .env          # 编辑 .env 填入真实 DeepSeek API Key
+npm install
+npm start                     # 默认监听 http://localhost:3001
+```
+
+> 即使不启动 server，系统也能完整运行——AI 会自动降级为规则引擎兜底。
 
 ## 核心业务闭环
 
@@ -57,15 +75,18 @@ eldercare-ai-demo/
 → 管理端查看统计看板和服务复盘数据
 ```
 
-## 嵌入式 AI 功能说明
+## AI 功能说明
 
-系统内置基于规则引擎的 AI 风险识别模块，实现：
+系统**默认接入 DeepSeek 大语言模型 API**（deepseek-chat），通过本地代理服务（`server/server.js`）安全调用。当 DeepSeek 不可用时自动降级为内置规则引擎兜底。
+
+AI 风险识别模块实现：
 - 文本分类（事件类型识别）
 - 风险评分（低/中/高风险判定）
 - 触发原因生成
 - 派单推荐（责任人 + 处理时限）
-- AI 置信度模拟
+- AI 置信度评估
 - 可解释规则说明（状态规则、设备规则、文本规则、分类规则）
+- AI 来源透明标识（DeepSeek LLM / 规则引擎兜底）
 
 **重要**：所有 AI 结果必须经过人工复核。详见 `AI_FUNCTION_DEMO.md`。
 
@@ -82,9 +103,22 @@ eldercare-ai-demo/
 9. 进入"协同处理"接单并完成工单
 10. 进入"管理驾驶舱"查看统计指标和复盘建议
 
-## V1.2 更新内容
+## 更新内容
 
-### 系统产品化
+### V2.0 DeepSeek 大语言模型集成
+- **真实 LLM 接入**：默认使用 DeepSeek Chat API，通过本地代理服务 `server/server.js` 调用
+- **安全隔离**：API Key 仅存 `server/.env`，前端不持有；PII 脱敏后发送
+- **自动降级**：LLM 不可用时自动切换本地规则引擎兜底，系统不崩溃
+- **来源透明**：AI 结果卡片标注 LLM / 规则引擎来源、模型名称、兜底状态、隐私保护状态
+
+### V1.9 隐私保护与审计日志
+- **数据脱敏**：联系电话默认 `138****0001`，紧急联系人电话掩码，地址仅显示到楼栋
+- **授权查看**：点击"显示完整信息"需 confirm 确认，刷新后自动恢复脱敏
+- **审计日志**：所有关键操作（提交求助、AI识别、复核、派单、接单、完成、导入导出、清空等）均写入 `state.auditLogs`
+- **日志表**：数据记录页新增"审计日志"表，最近 100 条倒序展示
+- **日志持久化**：导出 JSON 包含完整审计日志，清空数据前二次确认
+
+### V1.2 系统产品化
 - 首页重新设计为系统工作台：包含关键指标卡片、核心业务流程、待处理事项列表、快捷操作
 - 移除所有课堂演示相关内容（演示进度条、步骤提示、演示路径说明）
 - 保留完整业务闭环但不使用演示语言包装
@@ -101,7 +135,6 @@ eldercare-ai-demo/
 
 ## 后续可扩展方向
 
-- 接入真实大语言模型 API 替代规则引擎
 - 接入物联网设备数据（跌倒检测、烟雾报警等）
 - 对接真实社区管理系统数据库
 - 增加手机端适配

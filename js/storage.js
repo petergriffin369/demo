@@ -68,7 +68,7 @@ function importData(json) {
       var hasCareRecords = Array.isArray(data.careRecords);
       var hasWorkOrders = Array.isArray(data.workOrders);
       if (!hasElders || !hasResources || !hasCareRecords || !hasWorkOrders) {
-        console.error('导入数据失败：JSON 结构不符合演示系统数据格式');
+        console.error('导入数据失败：JSON 结构不符合系统数据格式');
         return null;
       }
       saveState(data);

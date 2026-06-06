@@ -36,7 +36,9 @@ function createWorkOrder(record, reviewInfo) {
     ratingComment: '',
     processRole: '',
     acceptedAt: '',
+    assignedAt: '',
     completedAt: '',
+    ratingAt: '',
     photoUploaded: false,
     reassignHistory: [],
     createdAt: now,
@@ -82,6 +84,10 @@ function assignWorkOrder(order, assignee, reason) {
   }
   if (order.status === '待派单') {
     order.status = '已派单';
+    // 首次派单写入派单时间
+    if (!order.assignedAt) {
+      order.assignedAt = getNow();
+    }
   }
   order.updatedAt = getNow();
   return order;
@@ -101,6 +107,7 @@ function completeWorkOrder(order, result, rating, ratingComment, photoUploaded) 
   order.ratingComment = ratingComment || '';
   order.status = '已完成';
   order.completedAt = getNow();
+  order.ratingAt = getNow();
   order.photoUploaded = photoUploaded || false;
   order.updatedAt = getNow();
   return order;
